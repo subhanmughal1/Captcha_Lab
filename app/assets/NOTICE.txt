@@ -1,0 +1,5 @@
+DejaVuSans-Bold.ttf and DejaVuSerif-Bold.ttf are from the DejaVu fonts
+(https://dejavu-fonts.github.io). The fonts are free software: they derive from
+Bitstream Vera (copyright Bitstream, Inc.), and the DejaVu changes are in the
+public domain. Redistribution is permitted; the full licence text is published at
+https://dejavu-fonts.github.io/License.html

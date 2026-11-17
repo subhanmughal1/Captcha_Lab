@@ -1,0 +1,7 @@
+The fonts in this folder are bundled so the interface looks the same without an
+internet connection. All three are licensed under the SIL Open Font License 1.1
+(https://openfontlicense.org), which permits bundling and redistribution.
+
+  Instrument Serif   (instrument-serif-regular.woff2, instrument-serif-italic.woff2)
+  Schibsted Grotesk  (schibsted-grotesk.woff2)
+  Martian Mono       (martian-mono.woff2)

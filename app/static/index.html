@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAPTCHA Lab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 38 38'%3E%3Crect width='38' height='38' fill='%23161412'/%3E%3Cg fill='%23efeae0'%3E%3Crect x='7' y='7' width='6' height='6'/%3E%3Crect x='16' y='7' width='6' height='6'/%3E%3Crect x='25' y='7' width='6' height='6'/%3E%3Crect x='7' y='16' width='6' height='6'/%3E%3Crect x='25' y='16' width='6' height='6'/%3E%3Crect x='7' y='25' width='6' height='6'/%3E%3Crect x='16' y='25' width='6' height='6'/%3E%3Crect x='25' y='25' width='6' height='6'/%3E%3C/g%3E%3Ccircle cx='19' cy='19' r='3.6' fill='%23ff4a1c'/%3E%3C/svg%3E">
+<script>
+  // Apply the saved theme before first paint.
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("theme"); } catch (e) {}
+    var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  })();
+</script>
+<style>
+  /* Inspection-bench look: warm paper, ink, one vermilion signal colour.
+     Fonts are bundled in /static/fonts (SIL Open Font License). */
+  @font-face { font-family:"Instrument Serif"; src:url("/static/fonts/instrument-serif-regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
+  @font-face { font-family:"Instrument Serif"; src:url("/static/fonts/instrument-serif-italic.woff2") format("woff2"); font-weight:400; font-style:italic; font-display:swap; }
+  @font-face { font-family:"Schibsted Grotesk"; src:url("/static/fonts/schibsted-grotesk.woff2") format("woff2"); font-weight:400 900; font-style:normal; font-display:swap; }
+  @font-face { font-family:"Martian Mono"; src:url("/static/fonts/martian-mono.woff2") format("woff2"); font-weight:100 800; font-style:normal; font-display:swap; }
+
+  :root {
+    --bg:#efeae0; --surface:#fbf8f1; --surface-2:#f3eee3; --stage:#e6e0d1;
+    --ink:#161412; --muted:#5d584e; --faint:#8b8576; --line:#d8d1c0; --line-strong:#b6ae9a;
+    --primary:#161412; --primary-ink:#f6f2e8; --accent:#ff4a1c; --accent-text:#c5330b; --accent-ink:#ffffff;
+    --ok:#1d6a43; --ok-bg:#dcebdd; --bad:#b0261a; --bad-bg:#f6dcd6;
+    --warn:#855600; --warn-bg:#f5e6c4; --info:#1e4c88; --info-bg:#dbe5f2;
+    --side-bg:#161412; --side-ink:#efeae0; --side-muted:#9b9485; --side-line:#2f2b26;
+    --grid:rgba(22,20,18,.045);
+    --display:"Instrument Serif","Iowan Old Style",Georgia,serif;
+    --sans:"Schibsted Grotesk","Segoe UI",system-ui,sans-serif;
+    --mono:"Martian Mono",ui-monospace,Consolas,monospace;
+    --radius:3px; --focus:0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  }
+  [data-theme="dark"] {
+    --bg:#121110; --surface:#1b1917; --surface-2:#161513; --stage:#0f0e0d;
+    --ink:#efeae0; --muted:#a8a091; --faint:#766f62; --line:#2d2a25; --line-strong:#463f36;
+    --primary:#efeae0; --primary-ink:#161412; --accent:#ff5a2e; --accent-text:#ff7a55;
+    --ok:#6fcf97; --ok-bg:#16291e; --bad:#ff8a7a; --bad-bg:#351a15;
+    --warn:#e6b450; --warn-bg:#30260f; --info:#8fb4ea; --info-bg:#172335;
+    --side-bg:#0b0a09; --side-line:#24211d; --grid:rgba(239,234,224,.035);
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font:15px/1.55 var(--sans); color:var(--ink); -webkit-font-smoothing:antialiased;
+         background-color:var(--bg);
+         background-image:linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+         background-size:28px 28px; }
+  /* paper grain */
+  body::before { content:""; position:fixed; inset:0; pointer-events:none; z-index:5; opacity:.07; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .9 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>"); }
+  [data-theme="dark"] body::before { mix-blend-mode:screen; opacity:.05; }
+  h1, h2, h3, p { margin:0; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:none; box-shadow:var(--focus); }
+  ::selection { background:var(--accent); color:#fff; }
+  .skip { position:absolute; left:-999px; top:8px; background:var(--surface); padding:8px 12px; z-index:10; }
+  .skip:focus { left:8px; }
+
+  /* ---------- layout ---------- */
+  .app { display:grid; grid-template-columns:264px minmax(0,1fr); min-height:100%; }
+  .side { background:var(--side-bg); color:var(--side-ink); display:flex; flex-direction:column;
+          padding:26px 0 20px; position:sticky; top:0; height:100vh; z-index:6; }
+  .brand { display:flex; align-items:center; gap:12px; padding:0 24px 26px; }
+  .brand svg { flex:none; }
+  .brand b { display:block; font:400 25px/1 var(--display); letter-spacing:.005em; }
+  .brand span { display:block; font:400 9.5px/1.3 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--side-muted); margin-top:6px; }
+  .nav { display:flex; flex-direction:column; border-top:1px solid var(--side-line); }
+  .nav button { position:relative; display:flex; align-items:baseline; gap:14px; width:100%; padding:14px 24px; border:0;
+                border-bottom:1px solid var(--side-line); background:none; color:var(--side-muted); cursor:pointer; text-align:left;
+                font-weight:500; transition:color .15s, background .15s, padding-left .2s; }
+  .nav .idx { font:500 10px/1 var(--mono); letter-spacing:.08em; color:var(--side-muted); opacity:.75; }
+  .nav button::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent);
+                        transform:scaleY(0); transition:transform .2s; }
+  .nav button:hover { color:var(--side-ink); padding-left:28px; }
+  .nav button[aria-current="page"] { color:var(--side-ink); background:rgba(255,255,255,.045); font-weight:650; }
+  .nav button[aria-current="page"]::before { transform:scaleY(1); }
+  .nav button[aria-current="page"] .idx { color:var(--accent); opacity:1; }
+  .nav button:focus-visible { box-shadow:inset 0 0 0 2px var(--accent); }
+  .sys { margin-top:auto; padding:18px 24px 0; }
+  .sys h2 { font:500 9.5px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--side-muted); margin-bottom:12px; }
+  .sys dl { margin:0; display:grid; grid-template-columns:1fr auto; gap:9px 10px; font:400 10.5px/1.3 var(--mono); }
+  .sys dt { color:var(--side-muted); } .sys dd { margin:0; text-align:right; }
+  .dot { display:inline-block; width:6px; height:6px; margin-right:7px; background:var(--side-muted); vertical-align:1px; }
+  .dot.ok { background:#6fcf97; box-shadow:0 0 0 3px rgba(111,207,151,.18); }
+  .dot.bad { background:#ff6b57; } .dot.warn { background:#e6b450; }
+  .side-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:18px 24px 0;
+               padding-top:14px; border-top:1px solid var(--side-line); }
+  .side-foot a { color:var(--side-muted); font:400 10.5px/1 var(--mono); text-decoration:none; border-bottom:1px solid var(--side-line); padding-bottom:3px; }
+  .side-foot a:hover { color:var(--side-ink); border-color:var(--accent); }
+  .theme { border:1px solid var(--side-line); background:none; color:var(--side-muted); border-radius:var(--radius);
+           padding:6px 9px; font:400 10px/1 var(--mono); letter-spacing:.06em; cursor:pointer; }
+  .theme:hover { color:var(--side-ink); border-color:var(--side-muted); }
+
+  main { padding:44px 48px 72px; min-width:0; }
+  .view { display:none; max-width:1200px; margin:0 auto; }
+  .view.active { display:block; }
+  @keyframes rise { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
+  .view.active .view-head { animation:rise .5s cubic-bezier(.2,.7,.2,1) both; }
+  .view.active .panel, .view.active .tiles { animation:rise .55s cubic-bezier(.2,.7,.2,1) both; animation-delay:.08s; }
+  .view.active .cols > :nth-child(2), .view.active .stack > :nth-child(2) { animation-delay:.16s; }
+  .view.active .stack > :nth-child(3) { animation-delay:.24s; }
+  .view.active .stack > :nth-child(4) { animation-delay:.32s; }
+
+  .view-head { position:relative; margin-bottom:30px; padding-bottom:26px; }
+  /* ruler under every page title */
+  .view-head::after { content:""; position:absolute; left:0; right:0; bottom:0; height:9px; border-top:1.5px solid var(--ink);
+    background-image:repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 8px),
+                     repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 40px);
+    background-size:auto 4px, auto 9px; background-repeat:repeat-x; opacity:.75; }
+  .eyebrow { font:500 10.5px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:14px; }
+  .eyebrow b { color:var(--accent-text); font-weight:600; margin-right:10px; }
+  .view-head h1 { font:400 58px/0.98 var(--display); letter-spacing:-.015em; }
+  .view-head h1 em { font-style:italic; }
+  .view-head p:not(.eyebrow) { color:var(--muted); margin-top:14px; max-width:68ch; font-size:15.5px; }
+  .cols { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,6fr); gap:26px; align-items:start; }
+  .stack { display:grid; gap:26px; }
+
+  /* ---------- panels ---------- */
+  .panel { background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius);
+           box-shadow:4px 4px 0 var(--line); }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:12px 18px; border-bottom:1px solid var(--line-strong); min-height:46px; }
+  .panel-head h2 { display:flex; align-items:center; font:500 10.5px/1.2 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--ink); }
+  .panel-head h2::before { content:""; width:7px; height:7px; background:var(--accent); margin-right:10px; flex:none; }
+  .panel-head h2:has(.step)::before { display:none; }
+  .panel-body { padding:20px 18px; }
+  .step { font:600 10.5px/1 var(--mono); color:var(--accent-ink); background:var(--accent); padding:4px 6px; margin-right:10px; }
+  .field { margin-bottom:18px; }
+  .field:last-child { margin-bottom:0; }
+  .label { display:block; font:500 10px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:9px; }
+  .hint { color:var(--muted); font-size:13.5px; }
+  .hint code, .mono { font-family:var(--mono); font-size:.82em; }
+  .hint code { background:var(--surface-2); border:1px solid var(--line); padding:1px 5px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .or { display:flex; align-items:center; gap:12px; color:var(--faint); font:500 10px/1 var(--mono); margin:18px 0;
+        text-transform:uppercase; letter-spacing:.16em; }
+  .or::before, .or::after { content:""; flex:1; height:1px; background:var(--line-strong); }
+
+  /* ---------- controls ---------- */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; border:1px solid var(--ink);
+         background:transparent; color:var(--ink); border-radius:var(--radius); padding:10px 17px; cursor:pointer;
+         font-weight:600; line-height:1.2; transition:background .15s, color .15s, border-color .15s, transform .08s; }
+  .btn:hover { background:var(--ink); color:var(--bg); }
+  .btn:active { transform:translateY(1px); }
+  .btn.primary { background:var(--primary); border-color:var(--primary); color:var(--primary-ink); }
+  .btn.primary:hover { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn.small { padding:6px 11px; font:500 10.5px/1.2 var(--mono); letter-spacing:.06em; }
+  .btn:disabled { opacity:.38; cursor:not-allowed; background:transparent; color:var(--ink); border-color:var(--line-strong); transform:none; }
+  .btn.primary:disabled { background:var(--line-strong); border-color:var(--line-strong); color:var(--surface); opacity:.7; }
+  .btn[aria-busy="true"]::before { content:""; width:12px; height:12px; border-radius:50%;
+         border:2px solid currentColor; border-right-color:transparent; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .seg { display:inline-flex; border:1px solid var(--ink); border-radius:var(--radius); flex-wrap:wrap; overflow:hidden; }
+  .seg button { border:0; border-right:1px solid var(--ink); background:none; padding:8px 15px; cursor:pointer; color:var(--muted);
+                font-weight:600; transition:background .15s, color .15s; }
+  .seg button:last-child { border-right:0; }
+  .seg button:hover { color:var(--ink); background:var(--surface-2); }
+  .seg button[aria-pressed="true"] { background:var(--ink); color:var(--bg); }
+  .seg button:focus-visible { box-shadow:inset 0 0 0 2px var(--accent); }
+  #providerSeg { display:flex; flex-wrap:nowrap; }
+  #providerSeg button { flex:1; padding:9px 8px; white-space:nowrap; }
+  input[type=number], textarea, dialog input { border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--surface-2); padding:9px 11px; }
+  input[type=number]:hover, textarea:hover { border-color:var(--ink); }
+  input[type=number] { width:120px; font:500 13px/1.2 var(--mono); }
+  textarea { width:100%; min-height:190px; resize:vertical; font:400 11.5px/1.7 var(--mono); }
+  .drop { position:relative; display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; padding:20px 14px;
+          border:1.5px dashed var(--line-strong); border-radius:var(--radius); background:var(--surface-2); cursor:pointer;
+          color:var(--muted); font-size:13.5px; transition:border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color:var(--accent); color:var(--ink);
+          background-image:repeating-linear-gradient(-45deg, transparent 0 7px, var(--line) 7px 8px); }
+  .drop b { color:var(--ink); font-weight:650; font-size:15px; }
+  .drop input { position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
+  .drop:focus-within { box-shadow:var(--focus); }
+  .drop .file { font:500 11px/1.4 var(--mono); color:var(--accent-text); }
+  .drop .file:empty { display:none; }
+
+  /* ---------- solve ---------- */
+  .stage { position:relative; display:flex; align-items:center; justify-content:center; min-height:170px; padding:24px;
+           background-color:var(--stage); border:1px solid var(--line-strong); border-radius:var(--radius);
+           background-image:linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+           background-size:14px 14px; }
+  /* crop marks in the corners of the specimen stage */
+  .stage::before, .stage::after { content:""; position:absolute; width:14px; height:14px; border:1.5px solid var(--ink); opacity:.55; }
+  .stage::before { top:8px; left:8px; border-right:0; border-bottom:0; }
+  .stage::after { bottom:8px; right:8px; border-left:0; border-top:0; }
+  .frame { position:relative; display:inline-block; line-height:0; animation:rise .35s ease both; }
+  .frame img { display:block; max-width:100%; max-height:300px; background:#fff; border:1px solid var(--ink);
+               box-shadow:5px 5px 0 rgba(22,20,18,.22); }
+  .frame.scanning::after { content:""; position:absolute; left:-6px; right:-6px; top:0; height:2px; background:var(--accent);
+               box-shadow:0 0 14px 3px rgba(255,74,28,.55); animation:scan .85s ease-in-out infinite alternate; }
+  @keyframes scan { from { top:0; } to { top:calc(100% - 2px); } }
+  .mark { position:absolute; width:33.333%; height:33.333%; border:3px solid var(--accent); pointer-events:none;
+          box-shadow:0 0 0 2px rgba(255,255,255,.9) inset; animation:pop .3s cubic-bezier(.2,1.4,.4,1) both; }
+  .mark.wrong { border-color:var(--bad); }
+  .mark.expected { border:3px dashed var(--info); }
+  @keyframes pop { from { transform:scale(1.25); opacity:0; } to { transform:none; opacity:1; } }
+  .stage-empty { font:400 10.5px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--faint); }
+
+  /* the verdict is stamped onto the report */
+  .verdict { display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:6px 0 20px; margin-bottom:20px;
+             border-bottom:1px dashed var(--line-strong); }
+  .verdict > span { display:inline-block; font:700 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase;
+                    padding:9px 12px 8px; border:2px solid currentColor; outline:1px solid currentColor; outline-offset:2px;
+                    border-radius:2px; transform:rotate(-3.5deg); transform-origin:left center; white-space:nowrap;
+                    animation:stamp .34s cubic-bezier(.2,1.5,.4,1) both; }
+  @keyframes stamp { from { transform:rotate(-9deg) scale(1.7); opacity:0; } to { transform:rotate(-3.5deg) scale(1); opacity:1; } }
+  .verdict small { flex:1; min-width:180px; font-size:13.5px; color:var(--muted); }
+  .v-ok > span { color:var(--ok); } .v-bad > span { color:var(--bad); }
+  .v-warn > span { color:var(--warn); } .v-info > span { color:var(--info); }
+  .readout { display:flex; flex-wrap:wrap; gap:7px; margin:2px 0 4px; }
+  .readout span { display:grid; place-items:center; min-width:50px; height:62px; padding:0 8px; border:1px solid var(--ink);
+                  border-radius:var(--radius); background:var(--surface-2); font:400 42px/1 var(--display);
+                  animation:rise .35s ease both; }
+  .readout span:nth-child(2) { animation-delay:.04s; } .readout span:nth-child(3) { animation-delay:.08s; }
+  .readout span:nth-child(4) { animation-delay:.12s; } .readout span:nth-child(5) { animation-delay:.16s; }
+  .readout span:nth-child(6) { animation-delay:.2s; }
+  .readout span.miss { border-color:var(--bad); color:var(--bad); background:var(--bad-bg); }
+  .readout.word span { font-size:34px; padding:0 20px; font-style:italic; }
+  .sub { font:500 10px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:20px 0 9px; }
+  .sub:first-child { margin-top:0; }
+  .meter { height:7px; background:var(--surface-2); border:1px solid var(--line-strong); overflow:hidden; }
+  .meter i { display:block; height:100%; background:var(--ink); transform-origin:left; animation:grow .8s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes grow { from { transform:scaleX(0); } }
+  .meter.mid i { background:var(--warn); } .meter.low i { background:var(--bad); }
+  .meter-row { display:flex; align-items:center; gap:14px; }
+  .meter-row .meter { flex:1; } .meter-row b { font:600 13px/1 var(--mono); min-width:62px; text-align:right; }
+
+  .dl { display:grid; grid-template-columns:minmax(120px,180px) minmax(0,1fr); margin:22px 0 0; border-top:1px solid var(--line-strong); }
+  .dl dt, .dl dd { padding:10px 0; border-bottom:1px dotted var(--line-strong); margin:0; }
+  .dl dt { font:500 10px/1.9 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .dl dd { overflow-wrap:anywhere; }
+  .tag { display:inline-block; font:600 9.5px/1 var(--mono); padding:5px 7px; letter-spacing:.1em; text-transform:uppercase;
+         border:1px solid var(--line-strong); color:var(--muted); vertical-align:1px; }
+  .tag.ok { background:var(--ok-bg); border-color:transparent; color:var(--ok); }
+  .tag.bad { background:var(--bad-bg); border-color:transparent; color:var(--bad); }
+  .tag.warn { background:var(--warn-bg); border-color:transparent; color:var(--warn); }
+  .tag.info { background:var(--info-bg); border-color:transparent; color:var(--info); }
+  details.raw { margin-top:18px; }
+  details.raw summary { cursor:pointer; font:500 10px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); width:max-content; padding:4px 0; }
+  details.raw summary:hover { color:var(--accent-text); }
+  details.raw pre { margin:10px 0 0; padding:14px; background:var(--side-bg); color:#e9e3d6; border-radius:var(--radius);
+                    font:400 11px/1.7 var(--mono); overflow:auto; max-height:320px; }
+  .empty { display:grid; place-content:center; justify-items:center; text-align:center; gap:8px; min-height:240px; color:var(--faint); padding:20px; }
+  .empty b { font:400 30px/1.1 var(--display); font-style:italic; color:var(--muted); }
+  .empty span { font-size:13.5px; }
+  .alert { padding:12px 14px; border-left:3px solid var(--bad); background:var(--bad-bg); color:var(--bad); }
+
+  /* ---------- numbers ---------- */
+  .hero { display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; }
+  .hero b { font:400 104px/0.82 var(--display); letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+  .hero span { color:var(--muted); padding-bottom:6px; font-size:14px; max-width:26ch; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:0; border:1px solid var(--line-strong);
+           background:var(--surface); box-shadow:4px 4px 0 var(--line); border-radius:var(--radius); }
+  .tile { padding:16px 18px 18px; border-right:1px solid var(--line-strong); }
+  .tile:last-child { border-right:0; }
+  .tile span { display:block; font:500 9.5px/1.3 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+  .tile b { font:400 44px/0.95 var(--display); letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tile .meter { margin-top:12px; }
+  .mini { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1px; background:var(--line-strong);
+          border:1px solid var(--line-strong); margin-top:24px; }
+  .mini div { background:var(--surface); padding:12px 14px; }
+  .mini span { display:block; font:500 9.5px/1.3 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .mini b { font:600 14px/1.3 var(--mono); }
+  .bars { display:grid; gap:10px; }
+  .bar { display:grid; grid-template-columns:minmax(110px,200px) minmax(0,1fr) 66px; gap:14px; align-items:center; }
+  .bar .mono { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar b { font:600 12px/1 var(--mono); text-align:right; }
+  .tape { display:flex; gap:3px; flex-wrap:wrap; }
+  .tape i { width:13px; height:26px; background:var(--line-strong); animation:rise .3s ease both; }
+  .tape i.ok { background:var(--ok); } .tape i.bad { background:var(--bad); } .tape i.none { background:var(--warn); }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; font:400 10px/1.4 var(--mono); color:var(--muted); margin-top:14px; }
+  .legend i { display:inline-block; width:8px; height:8px; margin-right:7px; }
+
+  /* ---------- tables ---------- */
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:10px 18px; border-bottom:1px dotted var(--line-strong); white-space:nowrap; }
+  th { font:500 9.5px/1.3 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+       border-bottom:1px solid var(--line-strong); background:var(--surface-2); }
+  tr:last-child td { border-bottom:0; }
+  tbody tr:hover td { background:var(--surface-2); }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  td.num { font:500 12px/1.4 var(--mono); }
+  td.wrap { white-space:normal; }
+  .panel-body .table-wrap th:first-child, .panel-body .table-wrap td:first-child { padding-left:0; }
+  .panel-body .table-wrap th { background:none; }
+
+  /* ---------- verification ---------- */
+  #widget { min-height:92px; display:flex; align-items:center; margin:14px 0 6px; }
+  .cases { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+  .case { display:flex; flex-direction:column; align-items:flex-start; gap:5px; text-align:left; padding:12px 14px;
+          border:1px solid var(--line-strong); border-left:3px solid var(--line-strong); border-radius:var(--radius);
+          background:var(--surface-2); cursor:pointer; transition:border-color .15s, background .15s, transform .12s; }
+  .case:hover { border-color:var(--ink); border-left-color:var(--accent); background:var(--surface); transform:translateX(2px); }
+  .case:disabled { opacity:.42; cursor:not-allowed; border-color:var(--line-strong); transform:none; background:var(--surface-2); }
+  .case b { font-weight:650; } .case span { font-size:12.5px; line-height:1.45; color:var(--muted); }
+  .status { font:400 40px/1 var(--display); font-style:italic; overflow-wrap:anywhere; }
+
+  /* ---------- dialog ---------- */
+  dialog { border:1px solid var(--ink); border-radius:var(--radius); padding:0; background:var(--surface); color:var(--ink);
+           width:min(430px, calc(100vw - 32px)); box-shadow:8px 8px 0 rgba(0,0,0,.35); }
+  dialog::backdrop { background:rgba(12,11,10,.6); }
+  dialog form { padding:24px; display:grid; gap:16px; }
+  dialog h2 { font:400 32px/1 var(--display); }
+  dialog input { width:100%; font:500 13px/1.2 var(--mono); }
+
+  @media (max-width: 1000px) {
+    .app { grid-template-columns:minmax(0,1fr); }
+    .side { position:static; height:auto; padding:16px 0 0; min-width:0; }
+    .brand { padding:0 18px 14px; }
+    .nav { flex-direction:row; overflow-x:auto; }
+    .nav button { width:auto; white-space:nowrap; padding:12px 16px; border-right:1px solid var(--side-line); border-bottom:0; }
+    .nav button:hover { padding-left:16px; }
+    .nav button::before { width:auto; right:0; top:auto; height:3px; transform:scaleX(0); }
+    .nav button[aria-current="page"]::before { transform:scaleX(1); }
+    .sys { display:none; }
+    .side-foot { margin:0; padding:10px 18px; }
+    main { padding:28px 18px 52px; }
+    .cols { grid-template-columns:1fr; }
+    .view-head h1 { font-size:44px; }
+    .hero b { font-size:76px; }
+    .tile { border-right:0; border-bottom:1px solid var(--line-strong); }
+    .mini { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .dl { grid-template-columns:minmax(96px,130px) minmax(0,1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="app">
+
+<aside class="side">
+  <div class="brand">
+    <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
+      <rect x=".75" y=".75" width="36.5" height="36.5" fill="none" stroke="#efeae0" stroke-width="1.5"/>
+      <g fill="#efeae0">
+        <rect x="7" y="7" width="6" height="6"/><rect x="16" y="7" width="6" height="6"/><rect x="25" y="7" width="6" height="6"/>
+        <rect x="7" y="16" width="6" height="6"/><rect x="25" y="16" width="6" height="6"/>
+        <rect x="7" y="25" width="6" height="6"/><rect x="16" y="25" width="6" height="6"/><rect x="25" y="25" width="6" height="6"/>
+      </g>
+      <circle cx="19" cy="19" r="3.6" fill="#ff4a1c"/>
+    </svg>
+    <div><b>Captcha Lab</b><span>Solving &amp; verification bench</span></div>
+  </div>
+
+  <nav class="nav" aria-label="Sections">
+    <button data-view="solve"><span class="idx">01</span>Solve</button>
+    <button data-view="batch"><span class="idx">02</span>Batch accuracy</button>
+    <button data-view="verify"><span class="idx">03</span>Token verification</button>
+    <button data-view="detect"><span class="idx">04</span>Provider detection</button>
+    <button data-view="report"><span class="idx">05</span>Reports</button>
+  </nav>
+
+  <div class="sys">
+    <h2>System</h2>
+    <dl>
+      <dt>Solver model</dt><dd id="sysModel"><span class="dot"></span>Checking</dd>
+      <dt>API access</dt><dd id="sysAuth"><span class="dot"></span>Checking</dd>
+      <dt>Provider keys</dt><dd id="sysKeys"><span class="dot"></span>Checking</dd>
+    </dl>
+  </div>
+  <div class="side-foot">
+    <a href="/docs" target="_blank" rel="noopener">API reference</a>
+    <button class="theme" id="themeBtn" type="button">Dark theme</button>
+  </div>
+</aside>
+
+<main id="main">
+
+<!-- ================= SOLVE ================= -->
+<section class="view" id="solve" aria-labelledby="solveTitle">
+  <header class="view-head">
+    <p class="eyebrow"><b>01</b>Custom engine</p>
+    <h1 id="solveTitle">Solve a <em>challenge</em></h1>
+    <p>Generate a synthetic challenge or upload an image. The engine identifies the challenge type first and solves only the types it supports.</p>
+  </header>
+  <div class="cols">
+    <div class="panel">
+      <div class="panel-head"><h2>Challenge</h2></div>
+      <div class="panel-body">
+        <div class="field">
+          <span class="label" id="kindLabel">Challenge type</span>
+          <div class="seg" role="group" aria-labelledby="kindLabel" data-seg="kind">
+            <button type="button" data-value="text" aria-pressed="true">Text strip</button>
+            <button type="button" data-value="shape_grid" aria-pressed="false">Shape grid</button>
+          </div>
+        </div>
+        <div class="field" id="lenField">
+          <span class="label" id="lenLabel">Characters</span>
+          <div class="seg" role="group" aria-labelledby="lenLabel" data-seg="len">
+            <button type="button" data-value="4" aria-pressed="false">4</button>
+            <button type="button" data-value="5" aria-pressed="true">5</button>
+            <button type="button" data-value="6" aria-pressed="false">6</button>
+          </div>
+        </div>
+        <button class="btn" id="genBtn" type="button">Generate challenge</button>
+        <div class="or">or</div>
+        <label class="drop" id="imageDrop">
+          <input type="file" id="imageFile" accept="image/*">
+          <b>Upload an image</b>
+          <span>Drop a file here or click to browse. PNG, JPG or WebP, up to 2 MB.</span>
+          <span class="file" id="imageName"></span>
+        </label>
+        <div class="field" style="margin-top:18px">
+          <span class="label">Preview</span>
+          <div class="stage" id="stage"><span class="stage-empty">No challenge loaded</span></div>
+        </div>
+        <button class="btn primary" id="solveBtn" type="button" disabled>Solve challenge</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Result</h2></div>
+      <div class="panel-body" id="solveOut" aria-live="polite">
+        <div class="empty"><b>No result yet</b><span>Load a challenge and press Solve.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BATCH ================= -->
+<section class="view" id="batch" aria-labelledby="batchTitle">
+  <header class="view-head">
+    <p class="eyebrow"><b>02</b>Accuracy</p>
+    <h1 id="batchTitle">Batch <em>accuracy</em></h1>
+    <p>Solve a whole dataset and measure how often the answer is exactly right. Use a freshly generated dataset or supply your own.</p>
+  </header>
+  <div class="cols">
+    <div class="stack">
+      <div class="panel">
+        <div class="panel-head"><h2>Generated dataset</h2></div>
+        <div class="panel-body">
+          <div class="field">
+            <span class="label" id="batchKindLabel">Challenge type</span>
+            <div class="seg" role="group" aria-labelledby="batchKindLabel" data-seg="batchKind">
+              <button type="button" data-value="text" aria-pressed="true">Text strips</button>
+              <button type="button" data-value="shape_grid" aria-pressed="false">Shape grids</button>
+              <button type="button" data-value="mixed" aria-pressed="false">Mixed</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label" for="batchN">Number of challenges</label>
+            <input type="number" id="batchN" value="200" min="1" max="2000">
+          </div>
+          <button class="btn primary" id="batchBtn" type="button">Run batch</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Supplied dataset</h2></div>
+        <div class="panel-body">
+          <label class="drop" id="zipDrop">
+            <input type="file" id="zipFile" accept=".zip,application/zip">
+            <b>Upload a ZIP of labelled images</b>
+            <span>Drop a file here or click to browse. Up to 20 MB and 2000 images.</span>
+            <span class="file" id="zipName"></span>
+          </label>
+          <p class="hint" style="margin:12px 0 16px">Labels come from a <code>labels.csv</code> inside the ZIP with <code>filename,label</code> rows.
+            Without it, the label is the file name up to the first underscore, for example <code>K7MP2_001.png</code>.</p>
+          <div class="row">
+            <button class="btn primary" id="zipBtn" type="button" disabled>Run on this dataset</button>
+            <button class="btn" id="sampleBtn" type="button">Download a sample dataset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Result</h2></div>
+      <div class="panel-body" id="batchOut" aria-live="polite">
+        <div class="empty"><b>No run yet</b><span>Results of the last batch appear here.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= VERIFY ================= -->
+<section class="view" id="verify" aria-labelledby="verifyTitle">
+  <header class="view-head">
+    <p class="eyebrow"><b>03</b>Official provider flow</p>
+    <h1 id="verifyTitle">Token <em>verification</em></h1>
+    <p>The provider's widget issues a token in your browser. This server sends it with the secret key to the provider's siteverify API and returns a structured result. Secrets and tokens never appear in logs.</p>
+  </header>
+  <div class="cols">
+    <div class="stack">
+      <div class="panel">
+        <div class="panel-head"><h2><span class="step">01</span>Provider</h2><span class="tag" id="keyMode"></span></div>
+        <div class="panel-body">
+          <div class="seg" role="group" aria-label="Provider" data-seg="provider" id="providerSeg"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2><span class="step">02</span>Get a token</h2></div>
+        <div class="panel-body">
+          <button class="btn" id="loadWidget" type="button">Load widget</button>
+          <div id="widget"></div>
+          <p class="hint">Complete the widget, then verify the token it issued.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2><span class="step">03</span>Verify</h2></div>
+        <div class="panel-body">
+          <button class="btn primary" id="vOk" type="button">Verify token</button>
+          <p class="sub" style="margin-top:20px">Failure cases</p>
+          <div class="cases">
+            <button class="case" id="vReuse" type="button"><b>Reused token</b><span>Send the last token a second time.</span></button>
+            <button class="case" id="vMissing" type="button"><b>Missing token</b><span>Send the request with no token.</span></button>
+            <button class="case" id="vInvalid" type="button"><b>Invalid token</b><span id="invalidHint">Send a token the provider never issued.</span></button>
+            <button class="case" id="vSpent" type="button"><b>Expired or already used</b><span id="spentHint">The provider reports the token as spent.</span></button>
+          </div>
+          <p class="hint" style="margin-top:14px">Real expiry: complete the widget, wait for the token lifetime to pass (about 2 minutes for reCAPTCHA and hCaptcha, 5 for Turnstile), then verify.</p>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Verification response</h2></div>
+      <div class="panel-body" id="verifyOut" aria-live="polite">
+        <div class="empty"><b>No response yet</b><span>Verify a token or run a failure case.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= DETECT ================= -->
+<section class="view" id="detect" aria-labelledby="detectTitle">
+  <header class="view-head">
+    <p class="eyebrow"><b>04</b>Recognition</p>
+    <h1 id="detectTitle">Provider <em>detection</em></h1>
+    <p>Paste the HTML of a page. The tool reports which CAPTCHA provider it integrates, and how strong the evidence is. It only reads the markup you paste.</p>
+  </header>
+  <div class="cols">
+    <div class="panel">
+      <div class="panel-head"><h2>Page HTML</h2></div>
+      <div class="panel-body">
+        <label class="label" for="html">Markup</label>
+        <textarea id="html" spellcheck="false" placeholder='&lt;div class="cf-turnstile" data-sitekey="..."&gt;&lt;/div&gt;'></textarea>
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary" id="detectBtn" type="button">Detect provider</button>
+          <button class="btn" id="detectSample" type="button">Insert sample markup</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Result</h2></div>
+      <div class="panel-body" id="detectOut" aria-live="polite">
+        <div class="empty"><b>No result yet</b><span>Paste markup and press Detect.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= REPORT ================= -->
+<section class="view" id="report" aria-labelledby="reportTitle">
+  <header class="view-head">
+    <p class="eyebrow"><b>05</b>Attempt history</p>
+    <h1 id="reportTitle">Attempt <em>reports</em></h1>
+    <p>Every solve and verification attempt is logged. Only metadata is stored: no tokens, no secrets and no images.</p>
+  </header>
+  <div class="stack">
+    <div class="tiles" id="tiles"></div>
+    <div class="panel">
+      <div class="panel-head"><h2>Latest attempts</h2>
+        <div class="row">
+          <button class="btn small" id="refresh" type="button">Refresh</button>
+          <button class="btn small" id="clear" type="button">Clear history</button>
+        </div>
+      </div>
+      <div class="panel-body" id="tapeBox"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>By challenge type and method</h2></div>
+      <div class="table-wrap" id="breakdown"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Recent attempts</h2></div>
+      <div class="table-wrap" id="recent"></div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<dialog id="keyDialog" aria-labelledby="keyTitle">
+  <form method="dialog">
+    <h2 id="keyTitle">API key required</h2>
+    <p class="hint">This server protects its API with a key. It is kept for this browser tab only.</p>
+    <div>
+      <label class="label" for="keyInput">API key</label>
+      <input id="keyInput" type="password" autocomplete="off">
+    </div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn" value="cancel" type="submit">Cancel</button>
+      <button class="btn primary" value="ok" type="submit">Continue</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s === null || s === undefined || s === "" ? "—" : s)
+  .replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct = v => (v * 100).toFixed(1) + "%";
+const money = v => "$" + Number(v || 0).toFixed(4);
+const tag = (kind, text) => `<span class="tag ${kind}">${esc(text)}</span>`;
+const dl = rows => `<dl class="dl">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+const raw = obj => `<details class="raw"><summary>Raw response</summary><pre>${esc(JSON.stringify(obj, null, 2))}</pre></details>`;
+const showError = (el, e) => { el.innerHTML = `<div class="alert" role="alert"><b>Something went wrong.</b> ${esc(e.message)}</div>`; };
+const meterClass = v => v >= 0.85 ? "" : v >= 0.6 ? "mid" : "low";
+const meter = v => `<div class="meter ${meterClass(v)}"><i style="width:${Math.max(0, Math.min(1, v)) * 100}%"></i></div>`;
+
+// ---------- API ----------
+// The key is only needed when the server sets API_KEY. It is kept for this
+// browser tab and sent in the X-API-Key header.
+const keyStore = {
+  value: "",
+  get() { try { return sessionStorage.getItem("apiKey") || this.value; } catch (e) { return this.value; } },
+  set(v) { this.value = v; try { sessionStorage.setItem("apiKey", v); } catch (e) {} },
+};
+function askKey() {
+  return new Promise(resolve => {
+    const dialog = $("keyDialog");
+    $("keyInput").value = "";
+    dialog.returnValue = "cancel";
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "ok" ? $("keyInput").value.trim() : ""), {once: true});
+    dialog.showModal();
+  });
+}
+async function request(path, opts = {}, retry = true) {
+  const headers = Object.assign({}, opts.headers);
+  if (keyStore.get()) headers["X-API-Key"] = keyStore.get();
+  const r = await fetch(path, Object.assign({}, opts, {headers}));
+  if (r.status === 401 && retry) {
+    const key = await askKey();
+    if (key) { keyStore.set(key); return request(path, opts, false); }
+  }
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    const detail = Array.isArray(body.detail) ? body.detail.map(d => d.msg).join("; ") : body.detail;
+    throw new Error(detail || `The request failed (${r.status}).`);
+  }
+  return r;
+}
+const api = async (path, opts) => (await request(path, opts)).json();
+const postJSON = (path, data) => api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+async function busy(button, work) {
+  button.disabled = true; button.setAttribute("aria-busy", "true");
+  try { return await work(); } finally { button.disabled = false; button.removeAttribute("aria-busy"); }
+}
+
+// ---------- segmented controls ----------
+const seg = {};
+function bindSeg(group) {
+  const name = group.dataset.seg;
+  const pressed = group.querySelector('[aria-pressed="true"]');
+  if (pressed) seg[name] = pressed.dataset.value;
+  group.onclick = e => {
+    const b = e.target.closest("button");
+    if (!b || !group.contains(b)) return;
+    group.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    seg[name] = b.dataset.value;
+    group.dispatchEvent(new CustomEvent("change"));
+  };
+}
+document.querySelectorAll(".seg").forEach(bindSeg);
+
+// ---------- navigation ----------
+const views = ["solve", "batch", "verify", "detect", "report"];
+function show(view) {
+  if (!views.includes(view)) view = "solve";
+  document.querySelectorAll(".view").forEach(s => s.classList.toggle("active", s.id === view));
+  document.querySelectorAll(".nav button").forEach(b => {
+    if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
+  if (view === "report") loadReport();
+}
+document.querySelectorAll(".nav button").forEach(b => b.onclick = () => show(b.dataset.view));
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+
+// ---------- theme ----------
+function paintTheme() {
+  $("themeBtn").textContent = document.documentElement.dataset.theme === "dark" ? "Light theme" : "Dark theme";
+}
+$("themeBtn").onclick = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("theme", next); } catch (e) {}
+  paintTheme();
+};
+paintTheme();
+
+// ---------- drop zones ----------
+function bindDrop(zone, input, nameEl, onFile) {
+  const pick = f => { if (f) { nameEl.textContent = f.name; onFile(f); } };
+  input.onchange = () => pick(input.files[0]);
+  ["dragenter", "dragover"].forEach(t => zone.addEventListener(t, e => { e.preventDefault(); zone.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(t => zone.addEventListener(t, e => { e.preventDefault(); zone.classList.remove("over"); }));
+  zone.addEventListener("drop", e => pick(e.dataTransfer.files[0]));
+}
+
+// ---------- solve ----------
+let current = null;  // {challenge_id} or {file}
+function setPreview(src) {
+  $("stage").innerHTML = `<div class="frame" id="frame"><img id="preview" alt="Challenge image"></div>`;
+  $("preview").src = src;
+  $("solveBtn").disabled = false;
+  $("solveOut").innerHTML = `<div class="empty"><b>Ready</b><span>Press Solve to run the engine on this challenge.</span></div>`;
+}
+document.querySelector('[data-seg="kind"]').addEventListener("change", () => { $("lenField").hidden = seg.kind !== "text"; });
+$("genBtn").onclick = () => busy($("genBtn"), async () => {
+  try {
+    const c = await api(`/api/challenge/generate?kind=${seg.kind}&length=${seg.len}`, {method: "POST"});
+    current = {challenge_id: c.challenge_id};
+    $("imageFile").value = ""; $("imageName").textContent = "";
+    setPreview("data:image/png;base64," + c.image_base64);
+  } catch (e) { showError($("solveOut"), e); }
+});
+bindDrop($("imageDrop"), $("imageFile"), $("imageName"), f => { current = {file: f}; setPreview(URL.createObjectURL(f)); });
+
+function tileMark(n, cls) {
+  const i = Number(n) - 1;
+  if (!(i >= 0 && i < 9)) return "";
+  return `<span class="mark ${cls}" style="left:${(i % 3) * 33.333}%;top:${Math.floor(i / 3) * 33.333}%"></span>`;
+}
+function renderSolve(r) {
+  const grid = r.challenge_type === "synthetic_shape_grid";
+  const verdict = !r.supported ? ["v-bad", "Unsupported challenge", "The engine did not attempt it."]
+    : r.solution === null ? ["v-bad", "No solution", "The engine could not read this challenge."]
+    : r.correct === true ? ["v-ok", "Correct", "The answer matches the answer key."]
+    : r.correct === false ? ["v-bad", "Wrong", "The answer differs from the answer key."]
+    : ["v-info", "Solved", "Uploaded images have no answer key, so the result is not scored."];
+
+  let readout = "";
+  if (r.solution !== null && r.solution !== undefined) {
+    if (grid) readout = `<div class="readout word"><span>Tile ${esc(r.solution)}</span></div>`;
+    else readout = `<div class="readout">${[...r.solution].map((ch, i) =>
+      `<span class="${r.expected && r.expected[i] !== ch ? "miss" : ""}">${esc(ch)}</span>`).join("")}</div>`;
+  }
+  const expected = r.expected && r.correct === false
+    ? `<p class="sub">Expected</p><div class="readout ${grid ? "word" : ""}">${grid ? `<span>Tile ${esc(r.expected)}</span>`
+        : [...r.expected].map(ch => `<span>${esc(ch)}</span>`).join("")}</div>` : "";
+  const confidence = r.confidence === null || r.confidence === undefined ? ""
+    : `<p class="sub">Confidence</p><div class="meter-row">${meter(r.confidence)}<b>${pct(r.confidence)}</b></div>`;
+
+  $("solveOut").innerHTML =
+    `<div class="verdict ${verdict[0]}"><span>${verdict[1]}</span><small>${verdict[2]}</small></div>` +
+    (readout ? `<p class="sub">Solution</p>${readout}` : "") + expected + confidence +
+    dl([
+      ["Challenge type", `<span class="mono">${esc(r.challenge_type)}</span>`],
+      ["Method", `<span class="mono">${esc(r.method)}</span>${r.fallback_used ? " " + tag("warn", "FALLBACK") : ""}`],
+      ["Processing time", `${esc(r.processing_ms)} ms`],
+      ["Estimated cost", `${money(r.est_cost_usd)} <span class="hint">local engine</span>`],
+      ["Detail", esc(r.detail)],
+    ]) + raw(r);
+
+  const frame = $("frame");
+  if (frame) {
+    frame.querySelectorAll(".mark").forEach(m => m.remove());
+    if (grid && r.solution) {
+      frame.insertAdjacentHTML("beforeend", tileMark(r.solution, r.correct === false ? "wrong" : ""));
+      if (r.correct === false && r.expected) frame.insertAdjacentHTML("beforeend", tileMark(r.expected, "expected"));
+    }
+  }
+}
+$("solveBtn").onclick = () => busy($("solveBtn"), async () => {
+  const fd = new FormData();
+  if (current.challenge_id) fd.append("challenge_id", current.challenge_id); else fd.append("file", current.file);
+  const frame = $("frame");
+  if (frame) frame.classList.add("scanning");
+  try {
+    // Hold the scan for a moment so a 5 ms solve is still visible.
+    const [result] = await Promise.all([api("/api/solve", {method: "POST", body: fd}), new Promise(r => setTimeout(r, 450))]);
+    renderSolve(result);
+  } catch (e) { showError($("solveOut"), e); }
+  if (frame) frame.classList.remove("scanning");
+});
+
+// ---------- batch ----------
+function bars(obj, label) {
+  const entries = Object.entries(obj);
+  if (!entries.length) return `<p class="hint">Not applicable to this dataset.</p>`;
+  return `<div class="bars">${entries.map(([k, v]) =>
+    `<div class="bar"><span class="mono" title="${esc(label(k))}">${esc(label(k))}</span>${meter(v)}<b>${pct(v)}</b></div>`).join("")}</div>`;
+}
+function renderBatch(r) {
+  const failures = r.sample_failures.length ? `<p class="sub">Sample failures</p><div class="table-wrap"><table>
+      <tr><th>Type</th><th>Expected</th><th>Got</th><th class="num">Confidence</th></tr>${r.sample_failures.map(f =>
+      `<tr><td class="mono">${esc(f.challenge_type)}</td><td class="mono">${esc(f.expected)}</td><td class="mono">${esc(f.got)}</td>
+       <td class="num">${f.confidence === null ? "—" : pct(f.confidence)}</td></tr>`).join("")}</table></div>` : "";
+  $("batchOut").innerHTML =
+    `<div class="hero"><b>${pct(r.accuracy)}</b><span>${r.correct} of ${r.total} solved exactly &middot; ${r.source === "uploaded" ? "uploaded dataset" : "generated dataset"}</span></div>
+     <div class="mini">
+       <div><span>Failed</span><b>${r.failed}</b></div>
+       <div><span>Unsupported</span><b>${r.unsupported}</b></div>
+       <div><span>Fallback used</span><b>${r.fallback_used}</b></div>
+       <div><span>Average time</span><b>${r.avg_processing_ms} ms</b></div>
+       <div><span>Average confidence</span><b>${r.avg_confidence === null ? "—" : pct(r.avg_confidence)}</b></div>
+       <div><span>Cost per challenge</span><b>${money(r.est_cost_per_challenge_usd)}</b></div>
+     </div>
+     <p class="sub">Accuracy by challenge type</p>${bars(r.accuracy_by_type, k => k)}
+     <p class="sub">Accuracy by text length</p>${bars(r.accuracy_by_length, k => k + " characters")}
+     ${failures}${raw(r)}`;
+}
+async function runBatch(button, call) {
+  $("batchOut").innerHTML = `<div class="empty"><b>Running</b><span>Solving the dataset. Large batches take a few seconds.</span></div>`;
+  await busy(button, async () => { try { renderBatch(await call()); } catch (e) { showError($("batchOut"), e); } });
+}
+$("batchBtn").onclick = () => runBatch($("batchBtn"), () => postJSON("/api/batch", {count: Number($("batchN").value), kind: seg.batchKind}));
+let dataset = null;
+bindDrop($("zipDrop"), $("zipFile"), $("zipName"), f => { dataset = f; $("zipBtn").disabled = false; });
+$("zipBtn").onclick = () => {
+  const fd = new FormData(); fd.append("file", dataset);
+  runBatch($("zipBtn"), () => api("/api/batch/upload", {method: "POST", body: fd}));
+};
+$("sampleBtn").onclick = () => busy($("sampleBtn"), async () => {
+  try {
+    const blob = await (await request("/api/dataset/sample?count=60&kind=mixed")).blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "captcha_dataset.zip";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (e) { showError($("batchOut"), e); }
+});
+
+// ---------- token verification ----------
+let cfg = {}, widgetId = null, widgetProvider = null, lastToken = null;
+const globals = {recaptcha: "grecaptcha", hcaptcha: "hcaptcha", turnstile: "turnstile"};
+
+// How "Invalid token" gets a real rejection, per provider.
+function invalidPlan() {
+  const id = seg.provider, p = cfg[id] || {};
+  if (p.uses_test_keys && (p.test_scenarios || []).includes("always_fail"))
+    return {token: "not-a-real-token-" + Date.now(), scenario: "always_fail",
+            hint: "Uses the provider's official \"always fails\" test secret, so the provider rejects it."};
+  if (p.uses_test_keys && id === "recaptcha")
+    return {token: "not a real token! " + Date.now(), scenario: null,
+            hint: "Google's test secret accepts every token, so a malformed one is rejected by this server instead."};
+  return {token: "not-a-real-token-" + Date.now(), scenario: null,
+          hint: "Send a made-up token. The provider rejects it."};
+}
+function paintProvider() {
+  const p = cfg[seg.provider] || {};
+  $("keyMode").textContent = p.uses_test_keys ? "TEST KEYS" : "CUSTOM KEYS";
+  $("keyMode").className = "tag " + (p.uses_test_keys ? "info" : "ok");
+  $("invalidHint").textContent = invalidPlan().hint;
+  const spent = p.uses_test_keys && (p.test_scenarios || []).includes("already_spent");
+  $("vSpent").disabled = !spent;
+  $("spentHint").textContent = spent ? "Uses the provider's official \"token already spent\" test secret."
+    : "Available for Turnstile with test keys, the only provider that publishes a test secret for it.";
+  dropWidget();
+}
+function dropWidget() {
+  const lib = window[globals[widgetProvider]];
+  try { if (lib && widgetId !== null && lib.remove) lib.remove(widgetId); } catch (e) {}
+  $("widget").innerHTML = ""; widgetId = null; widgetProvider = null; lastToken = null;
+}
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const s = document.createElement("script"); s.src = src; s.onload = res;
+    s.onerror = () => rej(new Error("The provider script could not be loaded. Check the internet connection."));
+    document.head.appendChild(s);
+  });
+}
+async function waitFor(name) {
+  for (let i = 0; i < 50; i++) {
+    if (window[name] && window[name].render) return window[name];
+    await new Promise(r => setTimeout(r, 100));
+  }
+  throw new Error("The provider script did not start.");
+}
+$("loadWidget").onclick = () => busy($("loadWidget"), async () => {
+  const id = seg.provider, p = cfg[id];
+  dropWidget();
+  $("widget").innerHTML = `<div id="w" class="${p.widget_class}"></div>`;
+  try {
+    await loadScript(p.script_url + "?render=explicit");
+    const lib = await waitFor(globals[id]);
+    widgetId = lib.render($("w"), {sitekey: p.site_key, theme: document.documentElement.dataset.theme});
+    widgetProvider = id;
+  } catch (e) { showError($("verifyOut"), e); }
+});
+function widgetToken() {
+  const lib = window[globals[seg.provider]];
+  try { return lib && widgetId !== null ? lib.getResponse(widgetId) : ""; } catch (e) { return ""; }
+}
+function renderVerify(r) {
+  const kind = r.success ? "v-ok" : "v-bad";
+  const decided = r.decided_by === "provider"
+    ? "Provider (siteverify)" + (r.test_scenario ? ` <span class="hint">with its official <span class="mono">${esc(r.test_scenario)}</span> test secret</span>` : "")
+    : "This server, before calling the provider";
+  $("verifyOut").innerHTML =
+    `<div class="verdict ${kind}"><span>${r.success ? "Verified" : "Rejected"}</span><small>${esc(r.message)}</small></div>
+     <p class="sub">Status</p><p class="status">${esc(r.status)}</p>` +
+    dl([
+      ["Provider", esc((cfg[r.provider] || {}).name || r.provider)],
+      ["Decided by", decided],
+      ["Provider error codes", `<span class="mono">${esc((r.provider_error_codes || []).join(", "))}</span>`],
+      ["Hostname", esc(r.hostname)],
+      ["Challenge time", esc(r.challenge_ts)],
+      ["Token fingerprint", r.token_fingerprint ? `<span class="mono">${esc(r.token_fingerprint)}</span> <span class="hint">a hash, not the token</span>` : "—"],
+      ["Processing time", `${esc(r.processing_ms)} ms`],
+    ]) + raw(r);
+}
+async function runVerify(button, token, scenario) {
+  await busy(button, async () => {
+    try { renderVerify(await postJSON("/api/verify", {provider: seg.provider, token, scenario: scenario || null})); }
+    catch (e) { showError($("verifyOut"), e); }
+  });
+}
+$("vOk").onclick = () => { lastToken = widgetToken(); runVerify($("vOk"), lastToken); };
+$("vReuse").onclick = () => lastToken ? runVerify($("vReuse"), lastToken)
+  : showError($("verifyOut"), new Error("Verify a token once first, then send it again."));
+$("vMissing").onclick = () => runVerify($("vMissing"), "");
+$("vInvalid").onclick = () => { const plan = invalidPlan(); runVerify($("vInvalid"), plan.token, plan.scenario); };
+$("vSpent").onclick = () => runVerify($("vSpent"), "spent-token-" + Date.now(), "already_spent");
+
+// ---------- provider detection ----------
+$("detectSample").onclick = () => {
+  const p = cfg[seg.provider] || Object.values(cfg)[0];
+  if (p) $("html").value = `<script src="${p.script_url}" async defer><\/script>\n<form action="/contact" method="post">\n  <div class="${p.widget_class}" data-sitekey="${p.site_key}"></div>\n  <button type="submit">Send</button>\n</form>`;
+};
+$("detectBtn").onclick = () => busy($("detectBtn"), async () => {
+  try {
+    const r = await postJSON("/api/detect-provider", {html: $("html").value});
+    $("detectOut").innerHTML = (r.recognized
+      ? `<div class="verdict v-ok"><span>${r.providers.length === 1 ? "1 provider recognised" : r.providers.length + " providers recognised"}</span></div>
+         <div class="table-wrap"><table><tr><th>Provider</th><th>Evidence</th><th>Matched in the markup</th></tr>${r.providers.map(p =>
+           `<tr><td><b>${esc(p.name)}</b></td><td>${p.evidence === "signature" ? tag("ok", "SIGNATURE") : tag("warn", "KEYWORD ONLY")}</td>
+            <td class="mono wrap">${esc(p.matched.join(", "))}</td></tr>`).join("")}</table></div>
+         <p class="hint" style="margin-top:14px">Signature: a script URL, widget class or JavaScript object of the provider. Keyword only: the provider's name appears, but no widget markup.</p>`
+      : `<div class="verdict v-warn"><span>No supported provider recognised</span><small>No reCAPTCHA, hCaptcha or Turnstile markup was found.</small></div>`) + raw(r);
+  } catch (e) { showError($("detectOut"), e); }
+});
+
+// ---------- reports ----------
+async function loadReport() {
+  let s;
+  try { s = await api("/api/stats"); } catch (e) { return showError($("tapeBox"), e); }
+  const scored = s.successful + s.failed;
+  const rate = scored ? s.successful / scored : null;
+  $("tiles").innerHTML = [
+    ["Total attempts", s.total_attempts, ""],
+    ["Success rate", rate === null ? "—" : pct(rate), rate === null ? "" : meter(rate)],
+    ["Successful", s.successful, ""],
+    ["Failed", s.failed, ""],
+    ["Average time", s.avg_processing_ms + " ms", ""],
+    ["Cost per challenge", money(s.est_cost_per_challenge_usd), ""],
+  ].map(([label, value, extra]) => `<div class="tile"><span>${label}</span><b>${esc(value)}</b>${extra}</div>`).join("");
+
+  const state = a => a.success === 1 ? "ok" : a.success === 0 ? "bad" : "none";
+  $("tapeBox").innerHTML = s.recent.length
+    ? `<div class="tape" aria-hidden="true">${s.recent.slice().reverse().map(a =>
+        `<i class="${state(a)}" title="${esc(a.kind)} · ${esc(a.status)}"></i>`).join("")}</div>
+       <div class="legend"><span><i style="background:var(--ok)"></i>Successful</span><span><i style="background:var(--bad)"></i>Failed</span>
+       <span><i style="background:var(--warn)"></i>Not scored</span><span>Oldest to newest, last ${s.recent.length} attempts</span></div>`
+    : `<p class="hint">No attempts yet. Solve a challenge or verify a token to start the log.</p>`;
+
+  $("breakdown").innerHTML = s.breakdown.length ? `<table><tr><th>Kind</th><th>Challenge type or provider</th><th>Method</th>
+      <th class="num">Attempts</th><th class="num">Successful</th><th class="num">Failed</th><th class="num">Avg ms</th><th class="num">Cost</th></tr>${
+      s.breakdown.map(b => `<tr><td>${esc(b.kind)}</td><td class="mono">${esc(b.challenge_type)}</td><td class="mono">${esc(b.method)}</td>
+        <td class="num">${b.attempts}</td><td class="num">${b.successful}</td><td class="num">${b.failed}</td>
+        <td class="num">${b.avg_ms}</td><td class="num">${money(b.cost_usd)}</td></tr>`).join("")}</table>`
+    : `<p class="hint" style="padding:18px">No attempts yet.</p>`;
+
+  $("recent").innerHTML = s.recent.length ? `<table><tr><th>Time</th><th>Kind</th><th>Challenge type or provider</th><th>Status</th>
+      <th class="num">Confidence</th><th class="num">ms</th></tr>${
+      s.recent.map(a => `<tr><td>${new Date(a.ts * 1000).toLocaleTimeString()}</td><td>${esc(a.kind)}</td>
+        <td class="mono">${esc(a.challenge_type)}</td><td>${tag(a.success === 1 ? "ok" : a.success === 0 ? "bad" : "warn", a.status)}</td>
+        <td class="num">${a.confidence === null ? "—" : pct(a.confidence)}</td><td class="num">${a.processing_ms}</td></tr>`).join("")}</table>`
+    : `<p class="hint" style="padding:18px">No attempts yet.</p>`;
+}
+$("refresh").onclick = () => busy($("refresh"), loadReport);
+let clearArmed = null;
+$("clear").onclick = async () => {
+  const b = $("clear");
+  if (!clearArmed) {  // first press arms the button, second press clears
+    b.textContent = "Press again to clear";
+    clearArmed = setTimeout(() => { clearArmed = null; b.textContent = "Clear history"; }, 4000);
+    return;
+  }
+  clearTimeout(clearArmed); clearArmed = null; b.textContent = "Clear history";
+  try { await api("/api/stats", {method: "DELETE"}); await loadReport(); } catch (e) { showError($("tapeBox"), e); }
+};
+
+// ---------- start ----------
+function sys(id, state, text) { $(id).innerHTML = `<span class="dot ${state}"></span>${esc(text)}`; }
+fetch("/api/health").then(r => r.json()).then(h => {
+  sys("sysModel", h.model_loaded ? "ok" : "bad", h.model_loaded ? "Loaded" : "Missing");
+  sys("sysAuth", h.auth_required ? "warn" : "ok", h.auth_required ? "Key required" : "Open");
+}).catch(() => { sys("sysModel", "bad", "Unreachable"); sys("sysAuth", "bad", "Unreachable"); });
+fetch("/api/config").then(r => r.json()).then(c => {
+  cfg = c;
+  const ids = Object.keys(c);
+  $("providerSeg").innerHTML = ids.map((id, i) =>
+    `<button type="button" data-value="${esc(id)}" aria-pressed="${i === 0}">${esc(c[id].name.replace(/^(Google|Cloudflare) /, ""))}</button>`).join("");
+  seg.provider = ids[0];
+  $("providerSeg").addEventListener("change", paintProvider);
+  paintProvider();
+  const test = ids.filter(id => c[id].uses_test_keys).length;
+  sys("sysKeys", test === ids.length ? "ok" : "warn",
+      test === ids.length ? "Test keys" : test === 0 ? "Custom keys" : "Mixed");
+}).catch(() => sys("sysKeys", "bad", "Unreachable"));
+show(location.hash.slice(1) || "solve");
+</script>
+</body>
+</html>
